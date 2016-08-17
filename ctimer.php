@@ -2,15 +2,25 @@
 /**
  * Group file change times by inode ctime
  * User: petskratt (peeter@zone.ee)
- * Date: 11.08.2016
- * Time: 13:27
+ * Date: 17.08.2016
+ * Time: 12:29
+ * v.1.1
+ * - added auto-renamer
+ * v1.0
+ * - initial version
  */
 
 
 if ( basename( __FILE__, '.php' ) === 'ctimer' ) {
+
+	$new_name = 'ctimer_' . substr( bin2hex( mcrypt_create_iv( 22, MCRYPT_DEV_URANDOM ) ), 0, 8 ) . '.php';
+
+	rename( basename( __FILE__ ), $new_name );
+
 	header( "HTTP/1.0 404 Not Found" );
-	echo "Please rename, add random suffix or something.";
+	echo "I should not be available on predictable address - so I renamed myself, new name is <a href='$new_name'>$new_name</a>. It might be good idea to bookmark it for future use :-)";
 	die();
+
 }
 
 $file_ctimes_grouped = get_grouped_ctimes();

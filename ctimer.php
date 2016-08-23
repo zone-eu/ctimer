@@ -1,9 +1,14 @@
+
 <?php
 /**
  * Group file change times by inode ctime
  * User: petskratt (peeter@zone.ee)
- * Date: 17.08.2016
- * Time: 12:29
+ * Date: 23.08.2016
+ * Time: 13:245
+ * v.1.2
+ * - fixed json creation
+ * - added possibility to read from json files
+ * - this "quick hack" is becoming quite messy - but it works and saves lives, so refactoring can wait
  * v.1.1
  * - added auto-renamer
  * v1.0
@@ -23,16 +28,35 @@ if ( basename( __FILE__, '.php' ) === 'ctimer' ) {
 
 }
 
-$file_ctimes_grouped = get_grouped_ctimes();
+$local_jsons = get_stored_results();
 
-if ( ! isset( $_GET['json'] ) ) {
-	$html = generate_html( $file_ctimes_grouped );
+if ( ! empty( $local_jsons ) && empty( $_GET['json'] ) && ! isset( $_GET['live'] ) ) {
+	$html = generate_filepicker_html( $local_jsons );
 } else {
-	$filename = preg_replace( '~[^a-z0-9-_]+~i', '', str_replace( '.', '_', strtolower( $_SERVER['SERVER_NAME'] ) ) ) . '_' . date( "Y-m-d_H-i" ) . '.json';
-	header( 'Content-type: application/json' );
-	header( 'Content-Disposition: attachment; filename="' . basename( $filename ) . '"' );
-	header( 'Content-Transfer-Encoding: binary' );
-	echo json_encode( $file_ctimes_grouped );
+
+	$file_ctimes_grouped = get_grouped_ctimes();
+
+	if ( ! isset( $_GET['json'] ) ) {
+		$html = generate_ctimes_html( $file_ctimes_grouped );
+	} else if ( empty( $_GET['json'] ) ) {
+		$filename = preg_replace( '~[^a-z0-9-_]+~i', '', str_replace( '.', '_', strtolower( $_SERVER['SERVER_NAME'] ) ) ) . '_' . date( "Y-m-d_H-i" ) . '_ctimer.json';
+		header( 'Content-type: application/json' );
+		header( 'Content-Disposition: attachment; filename="' . basename( $filename ) . '"' );
+		header( 'Content-Transfer-Encoding: binary' );
+		echo json_encode( $file_ctimes_grouped );
+		die();
+	} else {
+		$filename = basename( $_GET['json'] );
+		if ( file_exists( $filename ) ) {
+			$json                = file_get_contents( $filename );
+			$file_ctimes_grouped = json_decode( $json, true );
+			$html                = generate_ctimes_html( $file_ctimes_grouped );
+		} else {
+			header( "HTTP/1.0 404 Not Found" );
+			echo "Requested .json not found";
+			die();
+		}
+	}
 }
 
 ?>
@@ -48,22 +72,7 @@ if ( ! isset( $_GET['json'] ) ) {
 	<div class="container-fluid">
 		<div class="row">
 			<div class="col-md-12">
-				<h1>What has changed?</h1>
-				<p>This script groups files by inode <code>ctime</code> - unlike <code>mtime</code> that
-					can be changed to whatever user pleases, this is set by kernel. Meaning we can trust it
-					(if we trust kernel, of course :-). Some paths may be excluded (cache?), please check the code.
-					If you want to keep this script in server, please give it some random name - to make discovery by
-					malicious scanners difficult (and also, please check the code - if kept on server it is very easy to
-					include malware in excludes).
-				</p>
-				<p>If you want to store the result for future (forensic) use,
-					<a href="?json">download it as .json</a>.</p>
-
-				<div class="panel-group" id="accordion" role="tablist" aria-multiselectable="true">
-					<?= $html ?>
-				</div>
-
-
+				<?= $html ?>
 			</div>
 		</div>
 	</div>
@@ -111,7 +120,7 @@ function get_grouped_ctimes() {
 	return $file_ctimes_grouped;
 }
 
-function generate_html( $file_ctimes_grouped ) {
+function generate_ctimes_html( $file_ctimes_grouped ) {
 	$html     = "";
 	$panel_id = 0;
 
@@ -159,6 +168,31 @@ function generate_html( $file_ctimes_grouped ) {
 		$panel_id ++;
 	}
 
+	if (!isset($_GET['json'])) {
+		$optional = '
+						<p>If you want to store the result for future (forensic) use,
+					<a href="?json">download it as .json</a>.</p>
+		';
+	} else {
+		$optional = '
+						<p><a href="?json">Check another stored file?</a></p>
+		';
+	}
+
+	$html = '
+				<h1>What has changed?</h1>
+				<p>This script groups files by inode <code>ctime</code> - unlike <code>mtime</code> that
+					can be changed to whatever user pleases, this is set by kernel. Meaning we can trust it
+					(if we trust kernel, of course :-). Some paths may be excluded (cache?), please check the code.
+					If you want to keep this script in server, please give it some random name - to make discovery by
+					malicious scanners difficult (and also, please check the code - if kept on server it is very easy to
+					include malware in excludes).
+				</p>
+				<div class="panel-group" id="accordion" role="tablist" aria-multiselectable="true">
+					' . $html . ' 
+				</div>
+				';
+
 	return $html;
 }
 
@@ -168,4 +202,36 @@ function name_sort( $a, $b ) {
 	} else {
 		return - 1;
 	}
+}
+
+function get_stored_results() {
+	$stored_results = array();
+	$files          = array_diff( scandir( '.' ), array( '..', '.' ) );
+
+	foreach ( $files as $file ) {
+		if ( strpos( $file, '_ctimer.json' ) !== false ) {
+			$stored_results[] = $file;
+		}
+	}
+
+	return $stored_results;
+}
+
+
+function generate_filepicker_html( $local_jsons ) {
+	$html = '';
+	foreach ( $local_jsons as $json ) {
+		$html .= "<li><a href='?json=$json'>$json</a></li>";
+	}
+
+	$html = '
+		<h1>Select stored results file for viewing</h1>
+		<p>You have launched me in folder with files, that look like stored results of my previouss runs.
+		I bet you want to parse one of these?</p>
+		<ul>
+			' . $html . '
+		</ul>
+	';
+
+	return $html;
 }

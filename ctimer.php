@@ -1,9 +1,16 @@
 <?php
 /**
  * Group file change times by inode ctime
- * User: petskratt (peeter@zone.ee)
- * Date: 23.08.2016
- * Time: 13:245
+ *
+ * @author: Peeter Marvet (peeter@zone.ee)
+ * Date: 12.09.2016
+ * Time: 12:23
+ * @version 1.2.1
+ * @license https://www.gnu.org/licenses/gpl-3.0.html GPL
+ *
+ * v.1.2.1
+ * - fixed previous fix to actually show the .json download link
+ * - added GPL license @ link to clarify usage rights
  * v.1.2
  * - fixed json creation
  * - added possibility to read from json files
@@ -151,7 +158,7 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 
 		$html .= '<div class="panel panel-default">';
 
-		$html .= '<div class="panel-heading" role="tab" id="heading_$panel_id">';
+		$html .= "<div class=\"panel-heading\" role=\"tab\" id=\"heading_$panel_id\">";
 		// add data-parent="#accordion" to have other panels collapse when opening (presumably not desired here)
 		$html .= "<h4 class=\"panel-title\"><a role=\"button\" data-toggle=\"collapse\" href=\"#collapse_$panel_id\" aria-expanded=\"true\" aria-controls=\"collapse_$panel_id\">$fragment_date - <strong>$i files changed</strong></a></h4>";
 		$html .= "</div>";
@@ -169,12 +176,12 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 
 	if (!isset($_GET['json'])) {
 		$optional = '
-						<p>If you want to store the result for future (forensic) use,
+				<p>If you want to store the result for future (forensic) use,
 					<a href="?json">download it as .json</a>.</p>
 		';
 	} else {
 		$optional = '
-						<p><a href="?json">Check another stored file?</a></p>
+				<p><a href="?">Check another stored file?</a></p>
 		';
 	}
 
@@ -186,7 +193,7 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 					If you want to keep this script in server, please give it some random name - to make discovery by
 					malicious scanners difficult (and also, please check the code - if kept on server it is very easy to
 					include malware in excludes).
-				</p>
+				</p>' .$optional . ' 
 				<div class="panel-group" id="accordion" role="tablist" aria-multiselectable="true">
 					' . $html . ' 
 				</div>

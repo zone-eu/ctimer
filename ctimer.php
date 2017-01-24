@@ -3,11 +3,13 @@
  * Group file change times by inode ctime
  *
  * @author: Peeter Marvet (peeter@zone.ee)
- * Date: 12.09.2016
- * Time: 12:23
- * @version 1.2.1
+ * Date: 24.01.2017
+ * Time: 14:32
+ * @version 1.2.2
  * @license https://www.gnu.org/licenses/gpl-3.0.html GPL
  *
+ * v.1.2.2
+ * - random suffix that works on old PHPs
  * v.1.2.1
  * - fixed previous fix to actually show the .json download link
  * - added GPL license @ link to clarify usage rights
@@ -24,7 +26,7 @@
 
 if ( basename( __FILE__, '.php' ) === 'ctimer' ) {
 
-	$new_name = 'ctimer_' . substr( bin2hex( mcrypt_create_iv( 22, MCRYPT_DEV_URANDOM ) ), 0, 8 ) . '.php';
+	$new_name = 'ctimer_' . substr(md5(rand()), 0, 8)  . '.php';
 
 	rename( basename( __FILE__ ), $new_name );
 
@@ -94,7 +96,11 @@ function get_grouped_ctimes() {
 		$ctime       = filectime( $x->getPathname() );
 		$round_ctime = (int) round( $ctime, - 3 );
 
-		if ( is_file( $x->getPathname() ) && strpos( $x->getPathname(), 'wp-content/cache' ) === false ) {
+		$filename = $x->getPathname();
+		$path_parts = pathinfo($filename);
+		$extension = isset($path_parts['extension']) ? $path_parts['extension'] : "";
+
+		if ( is_file( $x->getPathname() ) && strpos( $x->getPathname(), 'wp-content/cache' ) === false  && !in_array($extension, array('jpg', 'png', 'gif', 'pdf', 'gz', 'jpeg', 'mp3', 'mp4')) ) {
 			// relative path is easier to view...
 			// $file_ctimes[$round_ctime][] = [ "name" => realpath( $x->getPathname() ), 'ctime' => $ctime ];
 			$file_ctimes[$round_ctime][] = array( "name" => $x->getPathname(), 'ctime' => $ctime );

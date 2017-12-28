@@ -2,12 +2,17 @@
 /**
  * Group file change times by inode ctime
  *
- * @author: Peeter Marvet (peeter@zone.ee)
- * Date: 24.01.2017
- * Time: 14:32
- * @version 1.2.2
+ * @author  : Peeter Marvet (peeter@zone.ee)
+ * Date: 13.11.2017
+ * Time: 23:25
+ * @version 1.2.3
  * @license https://www.gnu.org/licenses/gpl-3.0.html GPL
  *
+ * v.1.2.3
+ * - ignored path fragments as array
+ * - ignores and basepath as more visible globals
+ * - changed grouping to work with 900sec intervals
+ * - refactoring can still wait on backburner
  * v.1.2.2
  * - random suffix that works on old PHPs
  * v.1.2.1
@@ -23,15 +28,29 @@
  * - initial version
  */
 
+// although these files could contain malware we are ignoring them for ease of spotting real trouble
+$ignored_extensions = array( 'jpg', 'png', 'gif', 'pdf', 'gz', 'jpeg', 'mp3', 'mp4', 'doc', 'docx', 'xls', 'xlsx' );
+
+// these locations could be technically used for malware storage, but can be mostly ignored for clarity
+$ignored_paths = array(
+	'.git', // well
+	'./media/product/cache', './var/cache/', './var/session/', './var/report/', // magento 1.x
+	'./wp-content/cache', // wp
+	'./cache', './administrator/cache/' // joomla
+);
+
+// ctimer is usually launched from the root of website - provide relative path to check something else
+$base_path = '.';
+
 
 if ( basename( __FILE__, '.php' ) === 'ctimer' ) {
 
-	$new_name = 'ctimer_' . substr(md5(rand()), 0, 8)  . '.php';
+	$new_name = 'ctimer_' . substr( md5( rand() ), 0, 8 ) . '.php';
 
 	rename( basename( __FILE__ ), $new_name );
 
 	header( "HTTP/1.0 404 Not Found" );
-	echo "I should not be available on predictable address - so I renamed myself, new name is <a href='$new_name'>$new_name</a>. It might be good idea to bookmark it for future use :-)";
+	echo "<pre>I should not be available on predictable address - so I renamed myself, new name is: <a href='$new_name'>$new_name</a>" . PHP_EOL . "It might be good idea to bookmark it for future use :-)</pre>";
 	die();
 
 }
@@ -90,20 +109,41 @@ if ( ! empty( $local_jsons ) && empty( $_GET['json'] ) && ! isset( $_GET['live']
 <?php
 
 function get_grouped_ctimes() {
+
+	global $ignored_extensions, $ignored_paths, $base_path;
+
 	$file_ctimes = array();
 
-	foreach ( new RecursiveIteratorIterator ( new RecursiveDirectoryIterator ( '.' ), RecursiveIteratorIterator::CHILD_FIRST ) as $x ) {
-		$ctime       = filectime( $x->getPathname() );
-		$round_ctime = (int) round( $ctime, - 3 );
+	foreach ( new RecursiveIteratorIterator ( new RecursiveDirectoryIterator ( $base_path ), RecursiveIteratorIterator::CHILD_FIRST ) as $x ) {
 
-		$filename = $x->getPathname();
-		$path_parts = pathinfo($filename);
-		$extension = isset($path_parts['extension']) ? $path_parts['extension'] : "";
+		if ( ! is_link( $x->getPathname() ) ) {
 
-		if ( is_file( $x->getPathname() ) && strpos( $x->getPathname(), 'wp-content/cache' ) === false  && !in_array($extension, array('jpg', 'png', 'gif', 'pdf', 'gz', 'jpeg', 'mp3', 'mp4')) ) {
-			// relative path is easier to view...
-			// $file_ctimes[$round_ctime][] = [ "name" => realpath( $x->getPathname() ), 'ctime' => $ctime ];
-			$file_ctimes[$round_ctime][] = array( "name" => $x->getPathname(), 'ctime' => $ctime );
+			$filename = $x->getPathname();
+
+			$path_parts = pathinfo( $filename );
+			$extension  = isset( $path_parts['extension'] ) ? strtolower( $path_parts['extension'] ) : "";
+
+			if ( is_file( $filename ) && ! in_array( $extension, $ignored_extensions ) ) {
+
+				$ignore = false;
+
+				foreach ( $ignored_paths as $path ) {
+					if ( strpos( $filename, $path ) !== false ) {
+						$ignore = true;
+						break;
+					}
+				}
+
+				if ( ! $ignore ) {
+					$ctime       = filectime( $filename );
+					$round_ctime = (int) round( $ctime, - 3 );
+
+					//$file_ctimes[$round_ctime][] = array( "name" => $filename, 'ctime' => $ctime );
+
+					$file_ctimes[$ctime][] = array( "name" => $filename, 'ctime' => $ctime );
+				}
+
+			}
 		}
 
 	}
@@ -112,20 +152,24 @@ function get_grouped_ctimes() {
 
 	ksort( $file_ctimes );
 
-	$previous = null;
+	$index = null;
+	$group = array();
+
 	foreach ( $file_ctimes as $key => $value ) {
-		if ( ! is_null( $previous ) && $key == $previous + 1000 ) {
-
-			$file_ctimes_grouped[$key] = array_merge( $file_ctimes_grouped[$previous], $file_ctimes[$key] );
-
-			unset ( $file_ctimes_grouped[$previous] );
-		} else {
-			$file_ctimes_grouped[$key] = $file_ctimes[$key];
+		if ( is_null( $index ) ) {
+			$index = $key;
 		}
 
-		$previous = $key;
-
+		if ( $key > $index + 900 ) {
+			$file_ctimes_grouped[$index] = $group;
+			$group                       = $value;
+			$index                       = $key;
+		} else {
+			$group = array_merge( $group, $value );
+		}
 	}
+
+	unset( $file_ctimes );
 
 	krsort( $file_ctimes_grouped );
 
@@ -148,7 +192,7 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 		foreach ( $files as $file ) {
 
 			$file_date = date( "Y-m-d H:i", $file['ctime'] );
-			$fragment .= $file_date . ' - ' . $file['name'] . PHP_EOL;
+			$fragment  .= $file_date . ' - ' . $file['name'] . PHP_EOL;
 
 			if ( empty( $fragment_date ) || $file_date < $fragment_date ) {
 				$fragment_date = $file_date;
@@ -180,7 +224,7 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 		$panel_id ++;
 	}
 
-	if (!isset($_GET['json'])) {
+	if ( ! isset( $_GET['json'] ) ) {
 		$optional = '
 				<p>If you want to store the result for future (forensic) use,
 					<a href="?json">download it as .json</a>.</p>
@@ -199,7 +243,7 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 					If you want to keep this script in server, please give it some random name - to make discovery by
 					malicious scanners difficult (and also, please check the code - if kept on server it is very easy to
 					include malware in excludes).
-				</p>' .$optional . ' 
+				</p>' . $optional . ' 
 				<div class="panel-group" id="accordion" role="tablist" aria-multiselectable="true">
 					' . $html . ' 
 				</div>

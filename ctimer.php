@@ -1,13 +1,17 @@
+#!/usr/bin/env php
 <?php
 /**
  * Group file change times by inode ctime
  *
  * @author  : Peeter Marvet (peeter@zone.ee)
- * Date: 13.11.2017
- * Time: 23:25
- * @version 1.2.3
+ * Date: 27.06.2018
+ * Time: 09:05
+ * @version 1.2.4
  * @license https://www.gnu.org/licenses/gpl-3.0.html GPL
  *
+ * v.1.2.4
+ * - added support for cli - saving as json, chmod +x, shebang
+ * - json saved with JSON_PRETTY_PRINT
  * v.1.2.3
  * - ignored path fragments as array
  * - ignores and basepath as more visible globals
@@ -34,14 +38,32 @@ $ignored_extensions = array( 'jpg', 'png', 'gif', 'pdf', 'gz', 'jpeg', 'mp3', 'm
 // these locations could be technically used for malware storage, but can be mostly ignored for clarity
 $ignored_paths = array(
 	'.git', // well
-	'./media/product/cache', './var/cache/', './var/session/', './var/report/', // magento 1.x
+	'./media/product/cache',
+	'./var/cache/',
+	'./var/session/',
+	'./var/report/', // magento 1.x
 	'./wp-content/cache', // wp
-	'./cache', './administrator/cache/' // joomla
+	'./cache',
+	'./administrator/cache/' // joomla
 );
 
 // ctimer is usually launched from the root of website - provide relative path to check something else
 $base_path = '.';
 
+if ( php_sapi_name() === 'cli' ) {
+	$file_ctimes_grouped = get_grouped_ctimes();
+
+	$prefix = ! empty( $argv[1] ) ? preg_replace( '~[^a-z0-9-_]+~i', '', str_replace( '.', '_', strtolower( $argv[1] ) ) ) : substr( md5( rand() ), 0, 8 );
+
+	$filename = $prefix . '_' . date( "Y-m-d_H-i" ) . '_ctimer.json';
+	file_put_contents( $filename, json_encode( $file_ctimes_grouped, JSON_PRETTY_PRINT ) );
+
+	echo "Excluded extensions: " . implode( ', ', $ignored_extensions ) . PHP_EOL;
+	echo "Excluded paths: " . implode( ', ', $ignored_paths ) . PHP_EOL . PHP_EOL;
+	echo "File change times saved to $filename" . PHP_EOL . PHP_EOL;
+
+	exit();
+}
 
 if ( basename( __FILE__, '.php' ) === 'ctimer' ) {
 
@@ -70,7 +92,7 @@ if ( ! empty( $local_jsons ) && empty( $_GET['json'] ) && ! isset( $_GET['live']
 		header( 'Content-type: application/json' );
 		header( 'Content-Disposition: attachment; filename="' . basename( $filename ) . '"' );
 		header( 'Content-Transfer-Encoding: binary' );
-		echo json_encode( $file_ctimes_grouped );
+		echo json_encode( $file_ctimes_grouped, JSON_PRETTY_PRINT );
 		die();
 	} else {
 		$filename = basename( $_GET['json'] );
@@ -87,25 +109,26 @@ if ( ! empty( $local_jsons ) && empty( $_GET['json'] ) && ! isset( $_GET['live']
 }
 
 ?>
-	<html>
-	<head>
-		<title>File change times - from ctime</title>
-		<link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" crossorigin="anonymous">
-		<script src="//ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
-		<script src="//maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+<html>
+<head>
+    <title>File change times - from ctime</title>
+    <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css"
+          crossorigin="anonymous">
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
+    <script src="//maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
 
-	</head>
-	<body>
-	<div class="container-fluid">
-		<div class="row">
-			<div class="col-md-12">
-				<?= $html ?>
-			</div>
-		</div>
-	</div>
+</head>
+<body>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-12">
+			<?= $html ?>
+        </div>
+    </div>
+</div>
 
-	</body>
-	</html>
+</body>
+</html>
 <?php
 
 function get_grouped_ctimes() {
@@ -140,7 +163,7 @@ function get_grouped_ctimes() {
 
 					//$file_ctimes[$round_ctime][] = array( "name" => $filename, 'ctime' => $ctime );
 
-					$file_ctimes[$ctime][] = array( "name" => $filename, 'ctime' => $ctime );
+					$file_ctimes[ $ctime ][] = array( "name" => $filename, 'ctime' => $ctime );
 				}
 
 			}
@@ -161,9 +184,9 @@ function get_grouped_ctimes() {
 		}
 
 		if ( $key > $index + 900 ) {
-			$file_ctimes_grouped[$index] = $group;
-			$group                       = $value;
-			$index                       = $key;
+			$file_ctimes_grouped[ $index ] = $group;
+			$group                         = $value;
+			$index                         = $key;
 		} else {
 			$group = array_merge( $group, $value );
 		}

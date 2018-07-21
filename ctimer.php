@@ -35,20 +35,24 @@
 // although these files could contain malware we are ignoring them for ease of spotting real trouble
 $ignored_extensions = array( 'jpg', 'png', 'gif', 'pdf', 'gz', 'jpeg', 'mp3', 'mp4', 'doc', 'docx', 'xls', 'xlsx' );
 
+//$ignored_extensions = array_merge($ignored_extensions, array('txt', 'js', 'css', 'log'));
+
 // these locations could be technically used for malware storage, but can be mostly ignored for clarity
 $ignored_paths = array(
 	'.git', // well
-	'./media/product/cache',
-	'./var/cache/',
-	'./var/session/',
-	'./var/report/', // magento 1.x
-	'./wp-content/cache', // wp
+	'/media/product/cache',
+	'/var/cache/',
+	'/var/session/',
+	'/var/report/', // magento 1.x
+	'/wp-content/cache', // wp
+	'/administrator/cache/', // joomla
 	'./cache',
-	'./administrator/cache/' // joomla
 );
 
 // ctimer is usually launched from the root of website - provide relative path to check something else
 $base_path = '.';
+
+@ob_end_clean(); // so we can use same code for cli (with shebang) and web
 
 if ( php_sapi_name() === 'cli' ) {
 	$file_ctimes_grouped = get_grouped_ctimes();

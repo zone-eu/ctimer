@@ -1,14 +1,21 @@
-#!/usr/bin/env php
 <?php
 /**
  * Group file change times by inode ctime
  *
  * @author  : Peeter Marvet (peeter@zone.ee)
- * Date: 27.06.2018
- * Time: 09:52
- * @version 1.2.4
+ * Date: 22.07.2018
+ * Time: 15:16
+ * @version 1.3
  * @license https://www.gnu.org/licenses/gpl-3.0.html GPL
  *
+ * v.1.3
+ * - fixed problem with last timeframe not listed
+ * - removed shebang (was bad idea...   )
+ * - directory iterator detects non-openable directories, reports
+ * - directory iterator filters during recursion, not after traversing un-necessary places
+ * - ignores and errors shown on output
+ * - json export includes errors, includes and basepath
+ * - tested from php5.2 up (no JSON_PRETTY_PRINT in php < 5.4)
  * v.1.2.4
  * - added support for cli - saving as json, chmod +x, shebang
  * - json saved with JSON_PRETTY_PRINT
@@ -35,35 +42,39 @@
 // although these files could contain malware we are ignoring them for ease of spotting real trouble
 $ignored_extensions = array( 'jpg', 'png', 'gif', 'pdf', 'gz', 'jpeg', 'mp3', 'mp4', 'doc', 'docx', 'xls', 'xlsx' );
 
-//$ignored_extensions = array_merge($ignored_extensions, array('txt', 'js', 'css', 'log'));
+//$ignored_extensions = array_merge( $ignored_extensions, array( 'txt', 'csv', 'js', 'css', 'log' ) );
 
 // these locations could be technically used for malware storage, but can be mostly ignored for clarity
 $ignored_paths = array(
-	'.git', // well
+	'/.git', // well
 	'/media/product/cache',
-	'/var/cache/',
-	'/var/session/',
-	'/var/report/', // magento 1.x
+	'/var/cache',
+	'/var/session',
+	'/var/minifycache',
+	'/var/report', // magento 1.x
 	'/wp-content/cache', // wp
-	'/administrator/cache/', // joomla
+	'/administrator/cache', // joomla
 	'./cache',
+	//'./stats',
+	//'./logs',
 );
 
 // ctimer is usually launched from the root of website - provide relative path to check something else
 $base_path = '.';
 
-@ob_end_clean(); // so we can use same code for cli (with shebang) and web
+$errors = array();
 
 if ( php_sapi_name() === 'cli' ) {
+
 	$file_ctimes_grouped = get_grouped_ctimes();
 
 	$prefix = ! empty( $argv[1] ) ? preg_replace( '~[^a-z0-9-_]+~i', '', str_replace( '.', '_', strtolower( $argv[1] ) ) ) : substr( md5( rand() ), 0, 8 );
 
 	$filename = $prefix . '_' . date( "Y-m-d_H-i" ) . '_ctimer.json';
-	file_put_contents( $filename, json_encode( $file_ctimes_grouped, JSON_PRETTY_PRINT ) );
+	file_put_contents( $filename, generate_json( $file_ctimes_grouped ) );
 
-	echo "Excluded extensions: " . implode( ', ', $ignored_extensions ) . PHP_EOL;
-	echo "Excluded paths: " . implode( ', ', $ignored_paths ) . PHP_EOL . PHP_EOL;
+	echo "Ignored extensions: " . implode( ', ', $ignored_extensions ) . PHP_EOL;
+	echo "Ignored paths: " . implode( ', ', $ignored_paths ) . PHP_EOL . PHP_EOL;
 	echo "File change times saved to $filename" . PHP_EOL . PHP_EOL;
 
 	exit();
@@ -87,90 +98,102 @@ if ( ! empty( $local_jsons ) && empty( $_GET['json'] ) && ! isset( $_GET['live']
 	$html = generate_filepicker_html( $local_jsons );
 } else {
 
-	$file_ctimes_grouped = get_grouped_ctimes();
-
 	if ( ! isset( $_GET['json'] ) ) {
-		$html = generate_ctimes_html( $file_ctimes_grouped );
+
+		$file_ctimes_grouped = get_grouped_ctimes();
+		$html                = generate_ctimes_html( $file_ctimes_grouped );
+
 	} else if ( empty( $_GET['json'] ) ) {
+
 		$filename = preg_replace( '~[^a-z0-9-_]+~i', '', str_replace( '.', '_', strtolower( $_SERVER['SERVER_NAME'] ) ) ) . '_' . date( "Y-m-d_H-i" ) . '_ctimer.json';
 		header( 'Content-type: application/json' );
 		header( 'Content-Disposition: attachment; filename="' . basename( $filename ) . '"' );
 		header( 'Content-Transfer-Encoding: binary' );
-		echo json_encode( $file_ctimes_grouped, JSON_PRETTY_PRINT );
+
+		$file_ctimes_grouped = get_grouped_ctimes();
+
+		$json = array(
+			'ctimes'             => $file_ctimes_grouped,
+			'ignored_extensions' => $ignored_extensions,
+			'ignored_paths'      => $ignored_paths,
+			'errors'             => $errors,
+			'base_path'          => realpath( $base_path ),
+		);
+
+		echo generate_json( $file_ctimes_grouped );
 		die();
+
 	} else {
+
 		$filename = basename( $_GET['json'] );
+
 		if ( file_exists( $filename ) ) {
-			$json                = file_get_contents( $filename );
-			$file_ctimes_grouped = json_decode( $json, true );
-			$html                = generate_ctimes_html( $file_ctimes_grouped );
+
+			$file = file_get_contents( $filename );
+			$json = json_decode( $file, true );
+
+			if ( isset( $json['ctimes'] ) ) {
+
+				$file_ctimes_grouped = &$json['ctimes'];
+				$errors              = $json['errors'];
+				$ignored_extensions  = $json['ignored_extensions'];
+				$ignored_paths       = $json['ignored_paths'];
+
+			} else {
+
+				$file_ctimes_grouped = &$json;
+
+			}
+
+			$html = generate_ctimes_html( $file_ctimes_grouped );
+
 		} else {
+
 			header( "HTTP/1.0 404 Not Found" );
 			echo "Requested .json not found";
 			die();
+
 		}
 	}
 }
 
-?>
-<html>
-<head>
-    <title>File change times - from ctime</title>
-    <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css"
-          crossorigin="anonymous">
-    <script src="//ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
-    <script src="//maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+function generate_json( $file_ctimes_grouped ) {
 
-</head>
-<body>
-<div class="container-fluid">
-    <div class="row">
-        <div class="col-md-12">
-			<?= $html ?>
-        </div>
-    </div>
-</div>
+	global $ignored_extensions, $ignored_paths, $base_path, $errors;
 
-</body>
-</html>
-<?php
+	$json = array(
+		'ctimes'             => $file_ctimes_grouped,
+		'ignored_extensions' => $ignored_extensions,
+		'ignored_paths'      => $ignored_paths,
+		'errors'             => $errors,
+		'base_path'          => realpath( $base_path ),
+	);
+
+	if ( phpversion() >= '5.4' ) {
+		return json_encode( $json, JSON_PRETTY_PRINT );
+	} else if ( phpversion() >= '5.2' ) {
+		return json_encode( $json );
+	} else { // vintage technology detected, fallback to 20th century imminent
+		return var_export( $json, true );
+	}
+}
 
 function get_grouped_ctimes() {
 
-	global $ignored_extensions, $ignored_paths, $base_path;
+	global $ignored_extensions, $ignored_paths, $base_path, $errors;
 
 	$file_ctimes = array();
 
-	foreach ( new RecursiveIteratorIterator ( new RecursiveDirectoryIterator ( $base_path ), RecursiveIteratorIterator::CHILD_FIRST ) as $x ) {
+	$directory = new RecursiveDirectoryIterator ( $base_path );
+	$filter    = new CtimerRecursiveFilterIterator( $directory, $ignored_extensions, $ignored_paths, $errors );
+	$iterator  = new RecursiveIteratorIterator ( $filter, RecursiveIteratorIterator::SELF_FIRST ); //, RecursiveIteratorIterator::CATCH_GET_CHILD
 
-		if ( ! is_link( $x->getPathname() ) ) {
+	foreach ( $iterator as $x ) {
 
-			$filename = $x->getPathname();
-
-			$path_parts = pathinfo( $filename );
-			$extension  = isset( $path_parts['extension'] ) ? strtolower( $path_parts['extension'] ) : "";
-
-			if ( is_file( $filename ) && ! in_array( $extension, $ignored_extensions ) ) {
-
-				$ignore = false;
-
-				foreach ( $ignored_paths as $path ) {
-					if ( strpos( $filename, $path ) !== false ) {
-						$ignore = true;
-						break;
-					}
-				}
-
-				if ( ! $ignore ) {
-					$ctime       = filectime( $filename );
-					$round_ctime = (int) round( $ctime, - 3 );
-
-					//$file_ctimes[$round_ctime][] = array( "name" => $filename, 'ctime' => $ctime );
-
-					$file_ctimes[ $ctime ][] = array( "name" => $filename, 'ctime' => $ctime );
-				}
-
-			}
+		if ( $x->isFile() ) {
+			$filename                = $x->getPathname();
+			$ctime                   = filectime( $filename );
+			$file_ctimes[ $ctime ][] = array( "name" => $filename, 'ctime' => $ctime );
 		}
 
 	}
@@ -196,6 +219,10 @@ function get_grouped_ctimes() {
 		}
 	}
 
+	if ( ! empty( $group ) ) {
+		$file_ctimes_grouped[ $index ] = $group;
+	}
+
 	unset( $file_ctimes );
 
 	krsort( $file_ctimes_grouped );
@@ -204,6 +231,9 @@ function get_grouped_ctimes() {
 }
 
 function generate_ctimes_html( $file_ctimes_grouped ) {
+
+	global $ignored_extensions, $ignored_paths, $errors;
+
 	$html     = "";
 	$panel_id = 0;
 
@@ -262,6 +292,16 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 		';
 	}
 
+	$optional .= '
+                <p class="small"><strong>Ignored extensions:</strong> ' . implode( ', ', $ignored_extensions ) . '. <strong>Ignored paths:</strong> ' . implode( ', ', $ignored_paths ) . '.</p>
+            ';
+
+	if ( ! empty( $errors ) ) {
+		$optional .= '
+                <p class="alert alert-warning" role="alert"><strong>Inaccessible folders:</strong> ' . implode( ', ', $errors ) . '.</p>
+            ';
+	}
+
 	$html = '
 				<h1>What has changed?</h1>
 				<p>This script groups files by inode <code>ctime</code> - unlike <code>mtime</code> that
@@ -318,3 +358,72 @@ function generate_filepicker_html( $local_jsons ) {
 
 	return $html;
 }
+
+class CtimerRecursiveFilterIterator extends RecursiveFilterIterator {
+
+	protected $ignored_extensions;
+	protected $ignored_paths;
+	protected $errors;
+
+	public function __construct( RecursiveIterator $recursiveIter, $ignored_extensions, $ignored_paths, &$errors ) {
+
+		$this->ignored_extensions = $ignored_extensions;
+		$this->ignored_paths      = $ignored_paths;
+		$this->errors             = &$errors;
+		parent::__construct( $recursiveIter );
+
+	}
+
+	public function getChildren() {
+
+		return new self( $this->getInnerIterator()->getChildren(), $this->ignored_extensions, $this->ignored_paths, $this->errors );
+
+	}
+
+	public function accept() {
+
+		$pathname  = $this->current()->getPathname();
+		$extension = pathinfo( $pathname, PATHINFO_EXTENSION );
+
+		if ( $this->current()->isDir() ) {
+
+			if ( ! is_readable( $pathname ) ) {
+				$this->errors[] = $pathname;
+
+				return false;
+			}
+			foreach ( $this->ignored_paths as $ignored_path ) {
+				if ( strpos( $pathname, $ignored_path ) !== false ) {
+					return false;
+				}
+			}
+		} else if ( $this->current()->isFile() && in_array( $extension, $this->ignored_extensions ) ) {
+			return false;
+		}
+
+		return true;
+	}
+
+}
+
+?>
+<html>
+<head>
+    <title>File change times - from ctime</title>
+    <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css"
+          crossorigin="anonymous">
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
+    <script src="//maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+
+</head>
+<body>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-12">
+			<?= $html ?>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

@@ -3,11 +3,13 @@
  * Group file change times by inode ctime
  *
  * @author  : Peeter Marvet (peeter@zone.ee)
- * Date: 22.07.2018
- * Time: 15:16
- * @version 1.3
+ * Date: 01.08.2018
+ * Time: 10:12
+ * @version 1.3.1
  * @license https://www.gnu.org/licenses/gpl-3.0.html GPL
  *
+ * v.1.3.1
+ * - case-insensitive ignores (mostly for jpg/JPG)
  * v.1.3
  * - fixed problem with last timeframe not listed
  * - removed shebang (was bad idea...   )
@@ -393,11 +395,11 @@ class CtimerRecursiveFilterIterator extends RecursiveFilterIterator {
 				return false;
 			}
 			foreach ( $this->ignored_paths as $ignored_path ) {
-				if ( strpos( $pathname, $ignored_path ) !== false ) {
+				if ( strpos( $pathname, strtolower( $ignored_path ) ) !== false ) {
 					return false;
 				}
 			}
-		} else if ( $this->current()->isFile() && in_array( $extension, $this->ignored_extensions ) ) {
+		} else if ( $this->current()->isFile() && in_array( strtolower( $extension ), $this->ignored_extensions ) ) {
 			return false;
 		}
 

@@ -57,8 +57,9 @@ $ignored_paths = array(
 	'/wp-content/cache', // wp
 	'/administrator/cache', // joomla
 	'./cache',
-	//'./stats',
-	//'./logs',
+	//'/stats/',
+	//'/logs/',
+	//'/phpini/',
 );
 
 // ctimer is usually launched from the root of website - provide relative path to check something else

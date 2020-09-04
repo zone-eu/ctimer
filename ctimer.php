@@ -13,7 +13,7 @@
  * - add #!/usr/bin/env php to support running directly
  * - use getcwd() as cli basepath, not __DIR__
  * - avoid running as root
- * - add second parameter for json filename prefix
+ * - add second parameter for json filename prefix or echo
  * - Bootstrap 3.4.1
  * v.1.3.2
  * - added JSON_PARTIAL_OUTPUT_ON_ERROR to avoid failure on malfromed UTF8 etc
@@ -120,16 +120,24 @@ if ( php_sapi_name() === 'cli' ) {
 
 	$file_ctimes_grouped = get_grouped_ctimes();
 
-	$prefix = ! empty( $argv[2] ) ? $argv[2] : ( ! empty( $argv[1] ) ? $argv[1] : substr( md5( rand() ), 0, 8 ) );
+	if ( ! empty( $argv[2] ) && $argv[2] === 'echo' ) {
 
-	$prefix   = preg_replace( '~[^a-z0-9-_]+~i', '', str_replace( '.', '_', strtolower( $prefix ) ) );
-	$filename = $prefix . '_' . date( "Y-m-d_H-i" ) . '_ctimer.json';
+		echo generate_json( $file_ctimes_grouped );
 
-	file_put_contents( $filename, generate_json( $file_ctimes_grouped ) );
+	} else {
 
-	echo "Ignored extensions: " . implode( ', ', $ignored_extensions ) . PHP_EOL;
-	echo "Ignored paths: " . implode( ', ', $ignored_paths ) . PHP_EOL . PHP_EOL;
-	echo "File change times saved to $filename" . PHP_EOL . PHP_EOL;
+		$prefix = ! empty( $argv[2] ) ? $argv[2] : ( ! empty( $argv[1] ) ? $argv[1] : substr( md5( rand() ), 0, 8 ) );
+
+		$prefix   = preg_replace( '~[^a-z0-9-_]+~i', '', str_replace( '.', '_', strtolower( $prefix ) ) );
+		$filename = $prefix . '_' . date( "Y-m-d_H-i" ) . '_ctimer.json';
+
+		file_put_contents( $filename, generate_json( $file_ctimes_grouped ) );
+
+		echo "Ignored extensions: " . implode( ', ', $ignored_extensions ) . PHP_EOL;
+		echo "Ignored paths: " . implode( ', ', $ignored_paths ) . PHP_EOL . PHP_EOL;
+		echo "File change times saved to $filename" . PHP_EOL . PHP_EOL;
+
+	}
 
 	exit();
 }

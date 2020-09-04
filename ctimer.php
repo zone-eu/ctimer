@@ -1,13 +1,20 @@
+#!/usr/bin/env php
 <?php
 /**
  * Group file change times by inode ctime
  *
  * @author  : Peeter Marvet (peeter@zone.ee)
- * Date: 22.01.2020
- * Time: 10:40
- * @version 1.3.2
+ * Date: 04.09.2020
+ * Time: 21:02
+ * @version 1.4
  * @license https://www.gnu.org/licenses/gpl-3.0.html GPL
  *
+ * v.1.4
+ * - add #!/usr/bin/env php to support running directly
+ * - use getcwd() as cli basepath, not __DIR__
+ * - avoid running as root
+ * - add second parameter for json filename prefix
+ * - Bootstrap 3.4.1
  * v.1.3.2
  * - added JSON_PARTIAL_OUTPUT_ON_ERROR to avoid failure on malfromed UTF8 etc
  * - added support for $base_bath as 1st CLI argument
@@ -48,8 +55,28 @@
  * - initial version
  */
 
+// so we can have our shebang for cli and not mess up the web output https://stackoverflow.com/a/53271823/2000872
+if ( ob_get_level() ) {
+	ob_end_clean();
+	ob_start();
+}
+
 // although these files could contain malware we are ignoring them for ease of spotting real trouble
-$ignored_extensions = array( 'jpg', 'png', 'gif', 'pdf', 'gz', 'jpeg', 'mp3', 'mp4', 'doc', 'docx', 'xls', 'xlsx', 'log' );
+$ignored_extensions = array(
+	'jpg',
+	'png',
+	'gif',
+	'pdf',
+	'gz',
+	'jpeg',
+	'mp3',
+	'mp4',
+	'doc',
+	'docx',
+	'xls',
+	'xlsx',
+	'log'
+);
 
 //$ignored_extensions = array_merge( $ignored_extensions, array( 'txt', 'csv', 'js', 'css' ) );
 
@@ -77,6 +104,10 @@ $errors = array();
 
 if ( php_sapi_name() === 'cli' ) {
 
+	if ( function_exists( 'posix_geteuid' ) && posix_geteuid() === 0 ) {
+		die( "Cowardly refusing to run as root :(" . PHP_EOL );
+	}
+
 	if ( ! empty( $argv[1] ) ) {
 		if ( is_readable( $argv[1] ) ) {
 			$base_path = realpath( $argv[1] );
@@ -84,14 +115,16 @@ if ( php_sapi_name() === 'cli' ) {
 			die( "{$argv[1]} is not readable." . PHP_EOL );
 		}
 	} else {
-		$base_path = __DIR__;
+		$base_path = getcwd();
 	}
 
 	$file_ctimes_grouped = get_grouped_ctimes();
 
-	$prefix = ! empty( $argv[1] ) ? preg_replace( '~[^a-z0-9-_]+~i', '', str_replace( '.', '_', strtolower( $argv[1] ) ) ) : substr( md5( rand() ), 0, 8 );
+	$prefix = ! empty( $argv[2] ) ? $argv[2] : ( ! empty( $argv[1] ) ? $argv[1] : substr( md5( rand() ), 0, 8 ) );
 
+	$prefix   = preg_replace( '~[^a-z0-9-_]+~i', '', str_replace( '.', '_', strtolower( $prefix ) ) );
 	$filename = $prefix . '_' . date( "Y-m-d_H-i" ) . '_ctimer.json';
+
 	file_put_contents( $filename, generate_json( $file_ctimes_grouped ) );
 
 	echo "Ignored extensions: " . implode( ', ', $ignored_extensions ) . PHP_EOL;
@@ -424,24 +457,29 @@ class CtimerRecursiveFilterIterator extends RecursiveFilterIterator {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
-	<meta charset="utf-8">
-	<meta http-equiv="X-UA-Compatible" content="IE=edge">
-	<meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
 
-	<title>File change times - from ctime</title>
+    <title>File change times - from ctime</title>
 
-	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
-	<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
-	<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css"
+          integrity="sha384-HSMxcRTRxnN+Bdg0JdbxYKrThecOKuH5zCYotlSAcp1+c8xmyTe9GYg1l9a69psu" crossorigin="anonymous">
+    <script src="http://code.jquery.com/jquery-3.5.1.min.js"
+            integrity="sha256-9/aliU8dGd2tb6OSsuzixeV4y/faTqgFtohetphbbj0="
+            crossorigin="anonymous"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"
+            integrity="sha384-aJ21OjlMXNL5UyIl/XNwTMqvzeRMZH2w8c5cRVpzpU8Y5bApTppSuUkhZXN0VxHd"
+            crossorigin="anonymous"></script>
 
 </head>
 <body>
 <div class="container-fluid">
-	<div class="row">
-		<div class="col-md-12">
+    <div class="row">
+        <div class="col-md-12">
 			<?= $html ?>
-		</div>
-	</div>
+        </div>
+    </div>
 </div>
 
 </body>

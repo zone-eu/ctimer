@@ -1,14 +1,17 @@
-#!/usr/bin/env php
 <?php
 /**
  * Group file change times by inode ctime
  *
  * @author  : Peeter Marvet (peeter@zone.ee)
- * Date: 04.09.2020
- * Time: 21:02
- * @version 1.4
+ * Date: 05.09.2020
+ * @version 1.5
  * @license https://www.gnu.org/licenses/gpl-3.0.html GPL
  *
+ * v.1.5
+ * - Bootstrap 4.5.2
+ * - host in json
+ * - select files and download list with paths
+ * - remove shebang - our own default conf is without buffering...
  * v.1.4
  * - add #!/usr/bin/env php to support running directly
  * - use getcwd() as cli basepath, not __DIR__
@@ -54,12 +57,6 @@
  * v1.0
  * - initial version
  */
-
-// so we can have our shebang for cli and not mess up the web output https://stackoverflow.com/a/53271823/2000872
-if ( ob_get_level() ) {
-	ob_end_clean();
-	ob_start();
-}
 
 // although these files could contain malware we are ignoring them for ease of spotting real trouble
 $ignored_extensions = array(
@@ -118,20 +115,22 @@ if ( php_sapi_name() === 'cli' ) {
 		$base_path = getcwd();
 	}
 
-	$file_ctimes_grouped = get_grouped_ctimes();
+	// preferably second parameter - but could be path or random
+	$prefix = ! empty( $argv[2] ) ? $argv[2] : ( ! empty( $argv[1] ) ? $argv[1] : substr( md5( rand() ), 0, 8 ) );
+
+	$ctimes_grouped = get_grouped_ctimes();
 
 	if ( ! empty( $argv[2] ) && $argv[2] === 'echo' ) {
 
-		echo generate_json( $file_ctimes_grouped );
+		echo generate_json( $ctimes_grouped, $prefix );
 
 	} else {
 
-		$prefix = ! empty( $argv[2] ) ? $argv[2] : ( ! empty( $argv[1] ) ? $argv[1] : substr( md5( rand() ), 0, 8 ) );
+		$prefix = preg_replace( '~[^a-z0-9-_]+~i', '', strtolower( $prefix ) );
 
-		$prefix   = preg_replace( '~[^a-z0-9-_]+~i', '', str_replace( '.', '_', strtolower( $prefix ) ) );
 		$filename = $prefix . '_' . date( "Y-m-d_H-i" ) . '_ctimer.json';
 
-		file_put_contents( $filename, generate_json( $file_ctimes_grouped ) );
+		file_put_contents( $filename, generate_json( $ctimes_grouped, $prefix ) );
 
 		echo "Ignored extensions: " . implode( ', ', $ignored_extensions ) . PHP_EOL;
 		echo "Ignored paths: " . implode( ', ', $ignored_paths ) . PHP_EOL . PHP_EOL;
@@ -162,6 +161,7 @@ if ( ! empty( $local_jsons ) && empty( $_GET['json'] ) && ! isset( $_GET['live']
 
 	if ( ! isset( $_GET['json'] ) ) {
 
+		$host                = $_SERVER['SERVER_NAME'];
 		$file_ctimes_grouped = get_grouped_ctimes();
 		$html                = generate_ctimes_html( $file_ctimes_grouped );
 
@@ -193,6 +193,7 @@ if ( ! empty( $local_jsons ) && empty( $_GET['json'] ) && ! isset( $_GET['live']
 				$ignored_extensions  = $json['ignored_extensions'];
 				$ignored_paths       = $json['ignored_paths'];
 				$base_path           = $json['base_path'];
+				$host                = ! empty( $json['host'] ) ? $json['host'] : 'unknown';
 
 			} else {
 
@@ -212,9 +213,13 @@ if ( ! empty( $local_jsons ) && empty( $_GET['json'] ) && ! isset( $_GET['live']
 	}
 }
 
-function generate_json( $file_ctimes_grouped ) {
+function generate_json( $file_ctimes_grouped, $host = null ) {
 
 	global $ignored_extensions, $ignored_paths, $base_path, $errors;
+
+	if ( is_null( $host ) ) {
+		$host = $_SERVER['SERVER_NAME'];
+	}
 
 	$json = array(
 		'ctimes'             => $file_ctimes_grouped,
@@ -222,6 +227,7 @@ function generate_json( $file_ctimes_grouped ) {
 		'ignored_paths'      => $ignored_paths,
 		'errors'             => $errors,
 		'base_path'          => $base_path,
+		'host'               => $host,
 	);
 
 	if ( phpversion() >= '5.4' ) {
@@ -287,7 +293,7 @@ function get_grouped_ctimes() {
 
 function generate_ctimes_html( $file_ctimes_grouped ) {
 
-	global $ignored_extensions, $ignored_paths, $base_path, $errors;
+	global $ignored_extensions, $ignored_paths, $base_path, $host, $errors;
 
 	$html     = "";
 	$panel_id = 0;
@@ -304,7 +310,7 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 		foreach ( $files as $file ) {
 
 			$file_date = date( "Y-m-d H:i", $file['ctime'] );
-			$fragment  .= $file_date . ' - ' . $file['name'] . PHP_EOL;
+			$fragment  .= $file_date . ' - <span class="path">' . ltrim( $file['name'], './' ) . '</span>' . PHP_EOL;
 
 			if ( empty( $fragment_date ) || $file_date < $fragment_date ) {
 				$fragment_date = $file_date;
@@ -313,21 +319,21 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 		}
 
 		if ( $i < 50 ) {
-			$collapse_class = "collapse in";
+			$collapse_class = "collapse show";
 		} else {
 			$collapse_class = "collapse";
 		}
 
-		$html .= '<div class="panel panel-default">';
+		$html .= '<div class="card mb-1">';
 
-		$html .= "<div class=\"panel-heading\" role=\"tab\" id=\"heading_$panel_id\">";
+		$html .= "<div class=\"card-header\" role=\"tab\" id=\"heading_$panel_id\">";
 		// add data-parent="#accordion" to have other panels collapse when opening (presumably not desired here)
-		$html .= "<h4 class=\"panel-title\"><a role=\"button\" data-toggle=\"collapse\" href=\"#collapse_$panel_id\" aria-expanded=\"true\" aria-controls=\"collapse_$panel_id\">$fragment_date - <strong>$i files changed</strong></a></h4>";
+		$html .= "<a class=\"text-dark\" role=\"button\" data-toggle=\"collapse\" href=\"#collapse_$panel_id\" aria-expanded=\"true\" aria-controls=\"collapse_$panel_id\">$fragment_date - <strong>$i files changed</strong></a>";
 		$html .= "</div>";
 
 		$html .= "<div id=\"collapse_$panel_id\" class=\"panel-collapse $collapse_class\" role=\"tabpanel\" aria-labelledby=\"heading_$panel_id\">";
-		$html .= '<div class="panel-body">';
-		$html .= "<pre>$fragment</pre>";
+		$html .= '<div class="card-body">';
+		$html .= "<pre class='mb-0'>$fragment</pre>";
 		$html .= "</div>";
 		$html .= "</div>";
 
@@ -348,8 +354,9 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 	}
 
 	$optional .= '
-                <p class="small"><strong>Ignored extensions:</strong> ' . implode( ', ', $ignored_extensions ) . ' <strong>Ignored paths:</strong> ' . implode( ', ', $ignored_paths ) . '</p>
-                <p class="small"><strong>Base path:</strong> ' . $base_path . '/</p>
+                <p class="small"><strong>Ignored extensions:</strong> ' . implode( ', ', $ignored_extensions ) . '<br><strong>Ignored paths:</strong> ' . implode( ', ', $ignored_paths ) . '</p>
+                <p class="small"><strong>Host:</strong> ' . $host . '<br>
+                <strong>Base path:</strong> ' . $base_path . '</p>
             ';
 
 	if ( ! empty( $errors ) ) {
@@ -359,17 +366,18 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 	}
 
 	$html = '
-				<h1>What has changed?</h1>
+				<h1 class="pt-3">What has changed? <span class="download d-none"><button class="btn btn-secondary">Get the list!</button></span></h1>
 				<p>This script groups files by inode <code>ctime</code> - unlike <code>mtime</code> that
 					can be changed to whatever user pleases, this is set by kernel. Meaning we can trust it
 					(if we trust kernel, of course :-). Some paths may be excluded (cache?), please check the code.
 					If you want to keep this script in server, please give it some random name - to make discovery by
 					malicious scanners difficult (and also, please check the code - if kept on server it is very easy to
 					include malware in excludes).
-				</p>' . $optional . ' 
-				<div class="panel-group" id="accordion" role="tablist" aria-multiselectable="true">
+				</p>' . $optional . '
+				<div id="accordion" role="tablist" aria-multiselectable="true">
 					' . $html . ' 
 				</div>
+				<p class="download d-none"><button class="btn btn-secondary">Get the list!</button></p>
 				';
 
 	return $html;
@@ -465,30 +473,80 @@ class CtimerRecursiveFilterIterator extends RecursiveFilterIterator {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
+    <!-- Required meta tags -->
     <meta charset="utf-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css"
+          integrity="sha384-JcKb8q3iqJ61gNV9KGb8thSsNjpSL0n8PARn9HuZOnIxN0hoP+VmmDGMN5t9UJ0Z" crossorigin="anonymous">
 
     <title>File change times - from ctime</title>
-
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css"
-          integrity="sha384-HSMxcRTRxnN+Bdg0JdbxYKrThecOKuH5zCYotlSAcp1+c8xmyTe9GYg1l9a69psu" crossorigin="anonymous">
-    <script src="http://code.jquery.com/jquery-3.5.1.min.js"
-            integrity="sha256-9/aliU8dGd2tb6OSsuzixeV4y/faTqgFtohetphbbj0="
-            crossorigin="anonymous"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"
-            integrity="sha384-aJ21OjlMXNL5UyIl/XNwTMqvzeRMZH2w8c5cRVpzpU8Y5bApTppSuUkhZXN0VxHd"
-            crossorigin="anonymous"></script>
+    <style>
+        .ioc {
+            color: #fff;
+            background-color: #e83e8c;
+        }
+    </style>
 
 </head>
 <body>
 <div class="container-fluid">
     <div class="row">
-        <div class="col-md-12">
+        <div class="col">
 			<?= $html ?>
         </div>
     </div>
 </div>
+<!-- jQuery first, then Popper.js, then Bootstrap JS -->
+<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"
+        integrity="sha384-DfXdz2htPH0lsSSs5nCTpuj/zy4C+OGpamoFVy38MVBnE+IbbVYUew+OrCXaRkfj"
+        crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"
+        integrity="sha384-9/reFTGAW83EW2RDu2S0VKaIzap3H66lZH81PoYlFhbGU+6BZp6G7niu735Sk7lN"
+        crossorigin="anonymous"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"
+        integrity="sha384-B4gt1jrGC7Jh4AgTPSdUtOBvfO8shuf57BaghqFfPlYxofvL8/KUEfYiJOMMV+rV"
+        crossorigin="anonymous"></script>
+<script>
+    $(document).ready(function () {
 
+        var base_path = "<?=  $base_path . "/" ?>";
+        var host = "<?=  $host ?>"
+
+        $(".path").on("click", function () {
+            $(this).toggleClass("ioc");
+            $('.download').removeClass('d-none');
+        });
+
+        $(".download button").on("click", function () {
+
+            var file = "";
+
+            $('.ioc').each(function () {
+                file += base_path + $(this).text() + "\n";
+            });
+
+            download(host, file);
+        });
+
+        function download(filename, text) {
+
+            // https://ourcodeworld.com/articles/read/189/how-to-create-a-file-and-generate-a-download-with-javascript-in-the-browser-without-a-server
+
+            var element = document.createElement('a');
+            element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
+            element.setAttribute('download', filename);
+
+            element.style.display = 'none';
+            document.body.appendChild(element);
+
+            element.click();
+
+            document.body.removeChild(element);
+        }
+
+    });
+</script>
 </body>
 </html>

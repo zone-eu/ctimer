@@ -1,0 +1,31 @@
+#!/bin/bash
+# Fetch files specified by path from remote site
+# set -x
+
+if [ ! -f "$1" ]; then
+  echo "Please provide host-named file with list of paths to rsync as command line argument."
+  exit 1
+fi
+
+host=$(basename $1)
+
+mkdir -p "./${host}/tree/"
+rm -f "./${host}/_paths.txt"
+
+rsync -azh --files-from="$1" "${host}":/ "./${host}/tree/"
+
+function safecp() {
+  idx=2           # set the copy index to 0
+  dfn=${file##*/} # destination file name (dfn) w/path stripped
+  while [ -f "./${host}/${dfn}" ]; do # test if $dfn exist in output_dir
+    dfn=${file##*/}_$((idx++)) # if so, add copy index "_#" (increment until unique)
+  done
+  cp "$file" "./${host}/${dfn}"
+  echo "${dfn} - ${file}" >> "./${host}/_paths.txt"
+}
+
+while read -d '' file; do
+  safecp </dev/null
+done < <(find "./${host}/tree" -type f -print0)
+
+rm -rf "./${host}/tree"

@@ -1,0 +1,42 @@
+#!/bin/bash
+# Fetch ctimer json output over ssh, presuming list of site names in text file or as arguments
+# (and sites in .ssh/config - see https://github.com/zone-eu/zone-docs/blob/master/articles/eng/SSH-config-and-fs-from-zone-api.md)
+# Note: remote base directory is specific to zone.eu
+#set -x
+
+# list of hosts to scan
+hosts="$HOME/.ssh/something.hosts"
+
+if [ $# == 0 ] && [ ! -f "${hosts}" ]; then
+  echo "Please provide list of sites in ${hosts} or as command line arguments."
+  exit 1
+fi
+
+function remote_ctimer() {
+
+  echo "Doing ${host} ..."
+
+  ssh "$host" "\
+	mkdir -p ~/bin \
+	&& wget -q https://raw.githubusercontent.com/zone-eu/ctimer/master/ctimer.php -O ~/bin/ctimer.php \
+	&& chmod +x ~/bin/ctimer.php \
+	&& cd ~/domeenid/www.${host} \
+	&& ~/bin/ctimer.php . echo \
+	&& rm -f ~/bin/ctimer.php \
+	" >"${host}_$(date +%d-%m-%Y_%H-%M)_ctimer.json"
+
+}
+
+if [ $# -gt 0 ]; then
+  # process sites provided as arguments
+  for i; do
+    host="$i"
+    remote_ctimer
+  done
+else
+  # process sites from file
+  while read -u 10 host; do
+    remote_ctimer
+  done 10<"${hosts}"
+  # (using separate handle to avoid commands messing up our input)
+fi

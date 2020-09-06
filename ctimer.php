@@ -12,6 +12,7 @@
  * - host in json
  * - select files and download list with paths
  * - remove shebang - our own default conf is without buffering...
+ * - add hostname to json & output, move echo to third parameter
  * v.1.4
  * - add #!/usr/bin/env php to support running directly
  * - use getcwd() as cli basepath, not __DIR__
@@ -120,7 +121,7 @@ if ( php_sapi_name() === 'cli' ) {
 
 	$ctimes_grouped = get_grouped_ctimes();
 
-	if ( ! empty( $argv[2] ) && $argv[2] === 'echo' ) {
+	if ( ! empty( $argv[3] ) && $argv[3] === 'echo' ) {
 
 		echo generate_json( $ctimes_grouped, $prefix );
 

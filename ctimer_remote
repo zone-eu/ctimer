@@ -5,7 +5,7 @@
 #set -x
 
 # list of hosts to scan
-hosts="$HOME/.ssh/something.hosts"
+hosts="$HOME/.ssh/zonetech.hosts"
 
 if [ $# == 0 ] && [ ! -f "${hosts}" ]; then
   echo "Please provide list of sites in ${hosts} or as command line arguments."
@@ -21,7 +21,7 @@ function remote_ctimer() {
 	&& wget -q https://raw.githubusercontent.com/zone-eu/ctimer/master/ctimer.php -O ~/bin/ctimer.php \
 	&& chmod +x ~/bin/ctimer.php \
 	&& cd ~/domeenid/www.${host} \
-	&& php ~/bin/ctimer.php . echo \
+	&& php ~/bin/ctimer.php . ${host} echo \
 	&& rm -f ~/bin/ctimer.php \
 	" >"${host}_$(date +%d-%m-%Y_%H-%M)_ctimer.json"
 

@@ -23,8 +23,8 @@ function remote_ctimer() {
 	&& cd ~/domeenid/www.${host} \
 	&& php ~/bin/ctimer.php . ${host} echo \
 	&& rm -f ~/bin/ctimer.php \
-	" >"${host}_$(date +%d-%m-%Y_%H-%M)_ctimer.json"
-
+	" >"${host}_$(date +%Y-%m-%d_%H-%M)_ctimer.json"
+	
 }
 
 if [ $# -gt 0 ]; then

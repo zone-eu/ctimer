@@ -17,14 +17,14 @@ function remote_ctimer() {
   echo "Doing ${host} ..."
 
   ssh "$host" "\
-	mkdir -p ~/bin \
-	&& wget -q https://raw.githubusercontent.com/zone-eu/ctimer/master/ctimer.php -O ~/bin/ctimer.php \
-	&& chmod +x ~/bin/ctimer.php \
-	&& cd ~/domeenid/www.${host} \
-	&& php ~/bin/ctimer.php . ${host} echo \
-	&& rm -f ~/bin/ctimer.php \
+	builtin mkdir -p ~/bin \
+	&& /usr/bin/wget -q https://raw.githubusercontent.com/zone-eu/ctimer/master/ctimer.php -O ~/bin/ctimer.php \
+	&& builtin chmod +x ~/bin/ctimer.php \
+	&& builtin cd ~/domeenid/www.${host} \
+	&& /usr/bin/env php ~/bin/ctimer.php . ${host} echo \
+	&& builtin rm -f ~/bin/ctimer.php \
 	" >"${host}_$(date +%Y-%m-%d_%H-%M)_ctimer.json"
-	
+
 }
 
 if [ $# -gt 0 ]; then

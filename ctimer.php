@@ -3,10 +3,13 @@
  * Group file change times by inode ctime
  *
  * @author  : Peeter Marvet (peeter@zone.ee)
- * Date: 05.09.2020
- * @version 1.5
+ * Date: 25.11.2020
+ * @version 1.5.1
  * @license https://www.gnu.org/licenses/gpl-3.0.html GPL
  *
+ * v.1.5.1
+ * - error message if json_decode fails
+ * - tweaks to ctimer_remote (use builtin, /usr/bin/env and do not trust path)
  * v.1.5
  * - Bootstrap 4.5.2
  * - host in json
@@ -186,6 +189,12 @@ if ( ! empty( $local_jsons ) && empty( $_GET['json'] ) && ! isset( $_GET['live']
 
 			$file = file_get_contents( $filename );
 			$json = json_decode( $file, true );
+
+			if ( is_null( $json ) ) {
+				header( "HTTP/1.0 500 Internal Server Error" );
+				echo "JSON decode failed";
+				die();
+			}
 
 			if ( isset( $json['ctimes'] ) ) {
 

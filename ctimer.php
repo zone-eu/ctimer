@@ -10,6 +10,7 @@
  * v.1.5.1
  * - error message if json_decode fails
  * - tweaks to ctimer_remote (use builtin, /usr/bin/env and do not trust path)
+ * - output time with seconds
  * v.1.5
  * - Bootstrap 4.5.2
  * - host in json
@@ -319,7 +320,7 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 
 		foreach ( $files as $file ) {
 
-			$file_date = date( "Y-m-d H:i", $file['ctime'] );
+			$file_date = date( "Y-m-d H:i:s", $file['ctime'] );
 			$fragment  .= $file_date . ' - <span class="path">' . ltrim( $file['name'], './' ) . '</span>' . PHP_EOL;
 
 			if ( empty( $fragment_date ) || $file_date < $fragment_date ) {

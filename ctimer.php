@@ -7,6 +7,8 @@
  * @version 1.5.1
  * @license https://www.gnu.org/licenses/gpl-3.0.html GPL
  *
+ * v.1.5.2
+ * - cognizant cli argument to ignore all ignores
  * v.1.5.1
  * - error message if json_decode fails
  * - tweaks to ctimer_remote (use builtin, /usr/bin/env and do not trust path)
@@ -123,6 +125,12 @@ if ( php_sapi_name() === 'cli' ) {
 	// preferably second parameter - but could be path or random
 	$prefix = ! empty( $argv[2] ) ? $argv[2] : ( ! empty( $argv[1] ) ? $argv[1] : substr( md5( rand() ), 0, 8 ) );
 
+	// we need better processing of cli arguments
+	if ( in_array( 'cognizant', $argv ) ) {
+		$ignored_extensions = array();
+		$ignored_paths      = array();
+	}
+
 	$ctimes_grouped = get_grouped_ctimes();
 
 	if ( ! empty( $argv[3] ) && $argv[3] === 'echo' ) {
@@ -146,7 +154,7 @@ if ( php_sapi_name() === 'cli' ) {
 	exit();
 }
 
-if ( basename( __FILE__, '.php' ) === 'ctimer' ) {
+if ( basename( $_SERVER["SCRIPT_FILENAME"], '.php' ) === 'ctimer' ) {
 
 	$new_name = 'ctimer_' . substr( md5( rand() ), 0, 8 ) . '.php';
 
@@ -239,6 +247,7 @@ function generate_json( $file_ctimes_grouped, $host = null ) {
 		'errors'             => $errors,
 		'base_path'          => $base_path,
 		'host'               => $host,
+		'cognizant'          => ( empty( $ignored_extensions ) && empty( $ignored_paths ) ) ? true : false,
 	);
 
 	if ( phpversion() >= '5.4' ) {

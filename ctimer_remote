@@ -21,7 +21,7 @@ function remote_ctimer() {
 	&& /usr/bin/wget -q https://raw.githubusercontent.com/zone-eu/ctimer/master/ctimer.php -O ~/bin/ctimer.php \
 	&& /usr/bin/chmod +x ~/bin/ctimer.php \
 	&& builtin cd ~/domeenid/www.${host} \
-	&& /usr/bin/env php ~/bin/ctimer.php . ${host} echo \
+	&& /usr/bin/env php ~/bin/ctimer.php . ${host} echo ${cognizant} \
 	&& /usr/bin/rm -f ~/bin/ctimer.php \
 	" >"${host}_$(date +%Y-%m-%d_%H-%M)_ctimer.json"
 
@@ -29,6 +29,12 @@ function remote_ctimer() {
 
 if [ $# -gt 0 ]; then
   # process sites provided as arguments
+
+  if [ "$1" == "cognizant" ]; then
+    cognizant="cognizant"
+    shift
+  fi
+
   for i; do
     host="$i"
     remote_ctimer

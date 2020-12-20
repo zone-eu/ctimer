@@ -3,10 +3,13 @@
  * Group file change times by inode ctime
  *
  * @author  : Peeter Marvet (peeter@zone.ee)
- * Date: 25.11.2020
- * @version 1.5.1
+ * Date: 20.12.2020
+ * @version 1.5.3
  * @license https://www.gnu.org/licenses/gpl-3.0.html GPL
  *
+ * v.1.5.3
+ * - include file size and md5 (for smaller php files)
+ * - support whitelist.json in form ['somemd5hash' => true,] to mute files with known good hash
  * v.1.5.2
  * - cognizant cli argument to ignore all ignores
  * v.1.5.1
@@ -272,9 +275,28 @@ function get_grouped_ctimes() {
 	foreach ( $iterator as $x ) {
 
 		if ( $x->isFile() ) {
-			$filename                = $x->getPathname();
-			$ctime                   = filectime( $filename );
-			$file_ctimes[ $ctime ][] = array( "name" => str_replace( $base_path, '.', $filename ), 'ctime' => $ctime );
+			$filename = $x->getPathname();
+			$ctime    = filectime( $filename );
+			$size     = filesize( $filename );
+
+			if ( $size !== false
+			     && $size < 524288
+			     && (
+				     in_array( pathinfo( $filename, PATHINFO_EXTENSION ), array( 'php', 'inc', 'txt', 'json', 'css', 'scss', 'js', 'po', 'mo' ) )
+				     || preg_match( '(wp-admin|wp-includes)', $filename ) === 1
+			     )
+			) {
+				$md5 = md5_file( $filename );
+			} else {
+				$md5 = '';
+			}
+
+			$file_ctimes[ $ctime ][] = array(
+				"name"  => str_replace( $base_path, '.', $filename ),
+				'ctime' => $ctime,
+				'size'  => $size,
+				'md5'   => $md5
+			);
 		}
 
 	}
@@ -315,6 +337,12 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 
 	global $ignored_extensions, $ignored_paths, $base_path, $host, $errors;
 
+	if ( is_readable( 'whitelist.json' ) ) {
+		$whitelist = json_decode( file_get_contents( 'whitelist.json' ), true );
+	} else {
+		$whitelist = [];
+	}
+
 	$html     = "";
 	$panel_id = 0;
 
@@ -326,11 +354,20 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 
 		$fragment      = "";
 		$fragment_date = "";
+		$all_clean     = true;
 
 		foreach ( $files as $file ) {
 
+
+			if ( ! empty( $whitelist ) && ! empty( $file['md5'] ) && isset( $whitelist[ $file['md5'] ] ) ) {
+				$file_class = 'path text-secondary';
+			} else {
+				$file_class = 'path';
+				$all_clean  = false;
+			}
+
 			$file_date = date( "Y-m-d H:i:s", $file['ctime'] );
-			$fragment  .= $file_date . ' - <span class="path">' . ltrim( $file['name'], './' ) . '</span>' . PHP_EOL;
+			$fragment  .= $file_date . ' - <span class="' . $file_class . '">' . ltrim( $file['name'], './' ) . '</span>' . PHP_EOL;
 
 			if ( empty( $fragment_date ) || $file_date < $fragment_date ) {
 				$fragment_date = $file_date;
@@ -338,7 +375,7 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 			$i ++;
 		}
 
-		if ( $i < 50 ) {
+		if ( $i < 50 || $all_clean ) {
 			$collapse_class = "collapse show";
 		} else {
 			$collapse_class = "collapse";

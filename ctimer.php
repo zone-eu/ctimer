@@ -3,13 +3,14 @@
  * Group file change times by inode ctime
  *
  * @author  : Peeter Marvet (peeter@zone.ee)
- * Date: 20.12.2020
- * @version 1.5.3
+ * Date: 21.12.2020
+ * @version 1.6.0
  * @license https://www.gnu.org/licenses/gpl-3.0.html GPL
  *
- * v.1.5.3
+ * v.1.6.0
  * - include file size and md5 (for smaller php files)
  * - support whitelist.json in form ['somemd5hash' => true,] to mute files with known good hash
+ * - support example.com_*.yara.log (paths used, strings ignored) from Yara scans, to highlight found malware
  * v.1.5.2
  * - cognizant cli argument to ignore all ignores
  * v.1.5.1
@@ -96,8 +97,10 @@ $ignored_paths = array(
 	'/var/minifycache/',
 	'/var/report/', // magento 1.x
 	'/wp-content/cache/', // wp
+	'/wp-content/uploads/cache/wpml/twig/', // wpml
 	'/administrator/cache/', // joomla
 	// '/cache',
+	// zone.eu specific locations outside docroots
 	'/stats/',
 	'/logs/',
 	'/phpini/',
@@ -282,7 +285,17 @@ function get_grouped_ctimes() {
 			if ( $size !== false
 			     && $size < 524288
 			     && (
-				     in_array( pathinfo( $filename, PATHINFO_EXTENSION ), array( 'php', 'inc', 'txt', 'json', 'css', 'scss', 'js', 'po', 'mo' ) )
+				     in_array( pathinfo( $filename, PATHINFO_EXTENSION ), array(
+					     'php',
+					     'inc',
+					     'txt',
+					     'json',
+					     'css',
+					     'scss',
+					     'js',
+					     'po',
+					     'mo'
+				     ) )
 				     || preg_match( '(wp-admin|wp-includes)', $filename ) === 1
 			     )
 			) {
@@ -333,6 +346,16 @@ function get_grouped_ctimes() {
 	return $file_ctimes_grouped;
 }
 
+function yara_file( $line ) {
+
+	if ( empty( trim( $line ) ) || stripos( $line, '0x' ) === 0 ) {
+		return false;
+	}
+
+	return true;
+}
+
+
 function generate_ctimes_html( $file_ctimes_grouped ) {
 
 	global $ignored_extensions, $ignored_paths, $base_path, $host, $errors;
@@ -342,6 +365,28 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 	} else {
 		$whitelist = [];
 	}
+
+	$yara_scans = glob( "{$host}_*.yara.log", GLOB_BRACE );
+
+	$blacklist = [];
+
+	if ( ! empty( $yara_scans ) ) {
+		foreach ( $yara_scans as $yara_scan ) {
+			$lines = array_filter( explode( "\n", file_get_contents( $yara_scan ) ), 'yara_file' );
+			foreach ( $lines as $line ) {
+				$parts = explode( ' ', $line, 2 );
+				// giving /-terminated path to yara causes // in output
+				$path = str_replace( '//', '/', $parts[1] );
+				$path = str_replace( $base_path, '.', $path );
+
+				if ( ! isset( $blacklist[ $path ][ $parts[0] ] ) ) {
+					$blacklist[ $path ][ $parts[0] ] = true;
+				}
+			}
+		}
+	}
+
+	//var_dump($blacklist); die();
 
 	$html     = "";
 	$panel_id = 0;
@@ -355,8 +400,11 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 		$fragment      = "";
 		$fragment_date = "";
 		$all_clean     = true;
+		$some_bad      = false;
 
 		foreach ( $files as $file ) {
+
+			$detections = '';
 
 
 			if ( ! empty( $whitelist ) && ! empty( $file['md5'] ) && isset( $whitelist[ $file['md5'] ] ) ) {
@@ -366,8 +414,16 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 				$all_clean  = false;
 			}
 
+
+			if ( ! empty( $blacklist ) && isset( $blacklist[ $file['name'] ] ) ) {
+				$some_bad   = true;
+				$file_class = 'path text-danger';
+				$detections = '<strong>ZARA:</strong> ' . implode( ', ', array_keys( $blacklist[ $file['name'] ] ) );
+			}
+
+
 			$file_date = date( "Y-m-d H:i:s", $file['ctime'] );
-			$fragment  .= $file_date . ' - <span class="' . $file_class . '">' . ltrim( $file['name'], './' ) . '</span>' . PHP_EOL;
+			$fragment  .= $file_date . ' - <span class="' . $file_class . '">' . ltrim( $file['name'], './' ) . '</span> ' . $detections . PHP_EOL;
 
 			if ( empty( $fragment_date ) || $file_date < $fragment_date ) {
 				$fragment_date = $file_date;
@@ -375,10 +431,10 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 			$i ++;
 		}
 
-		if ( $i < 50 || $all_clean ) {
-			$collapse_class = "collapse show";
-		} else {
+		if ( ($i >= 50 || $all_clean) && ! $some_bad ) {
 			$collapse_class = "collapse";
+		} else {
+			$collapse_class = "collapse show";
 		}
 
 		$html .= '<div class="card mb-1">';

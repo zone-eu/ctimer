@@ -3,12 +3,12 @@
  * Group file change times by inode ctime
  *
  * @author  : Peeter Marvet (peeter@zone.ee)
- * Date: 21.12.2020
- * @version 1.6.0
+ * Date: 06.01.2021
+ * @version 1.6.1
  * @license https://www.gnu.org/licenses/gpl-3.0.html GPL
  *
- * v.1.6.0
- * - include file size and md5 (for smaller php files)
+ * v.1.6.1
+ * - include file size and md5 (for smaller php files), added is_readable check in 1.6.1
  * - support whitelist.json in form ['somemd5hash' => true,] to mute files with known good hash
  * - support example.com_*.yara.log (paths used, strings ignored) from Yara scans, to highlight found malware
  * v.1.5.2
@@ -298,6 +298,7 @@ function get_grouped_ctimes() {
 				     ) )
 				     || preg_match( '(wp-admin|wp-includes)', $filename ) === 1
 			     )
+			     && is_readable( $filename )
 			) {
 				$md5 = md5_file( $filename );
 			} else {
@@ -431,7 +432,7 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 			$i ++;
 		}
 
-		if ( ($i >= 50 || $all_clean) && ! $some_bad ) {
+		if ( ( $i >= 50 || $all_clean ) && ! $some_bad ) {
 			$collapse_class = "collapse";
 		} else {
 			$collapse_class = "collapse show";

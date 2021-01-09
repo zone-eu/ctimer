@@ -16,6 +16,7 @@ rm -f "${dir}/_meta/paths.txt"
 
 rsync -azh --files-from="$1" "${host}":/ "${dir}/tree/"
 
+# copy files to flat folder and add numerical suffix
 function safecp() {
   idx=1                                     # set the copy index to 1
   fn="${file##*/}"                          # destination file name (dfn) w/path stripped
@@ -29,9 +30,30 @@ function safecp() {
   echo "${dfn} - ${file}" >> "${dir}/_meta/paths.txt"
 }
 
+# copy files to flat folder and add md5 hash suffix, if unique
+function hashcp() {
+  
+  hash=$(md5sum -b "$file" | cut -f1 -d' ')
+
+  if [[ ! ${hashes[*]} =~ $hash ]]; then
+    hashes+=($hash)	
+    fn="${file##*/}"
+    dfn="${fn%.*}_${hash::8}.${fn##*.}"
+    cp "$file" "${dir}/${dfn}"
+    echo "${dfn} - ${file}" >> "${dir}/_meta/paths.txt"
+  else
+    echo "${file} DUPLICATE with ${hash}" >> "${dir}/_meta/paths.txt"
+  fi
+
+}
+
+hashes=()
+
 while read -d '' file; do
-  safecp </dev/null
+  hashcp </dev/null
 done < <(find "${dir}/tree/" -type f -print0)
+
+# printf "%s\n" "${hashes[@]}" >> "${dir}/_meta/paths.txt"
 
 rm -rf "${dir}/tree/"
 

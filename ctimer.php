@@ -4,9 +4,11 @@
  *
  * @author  : Peeter Marvet (peeter@zone.ee)
  * Date: 06.01.2021
- * @version 1.6.1
+ * @version 1.6.2
  * @license https://www.gnu.org/licenses/gpl-3.0.html GPL
  *
+ * v.1.6.2
+ * - for some reason all example.com_*.yara.log files were merged, now using only latest (by file mtime)
  * v.1.6.1
  * - include file size and md5 (for smaller php files), added is_readable check in 1.6.1
  * - support whitelist.json in form ['somemd5hash' => true,] to mute files with known good hash
@@ -368,11 +370,12 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 	}
 
 	$yara_scans = glob( "{$host}_*.yara.log", GLOB_BRACE );
+	usort( $yara_scans, function( $a, $b ) { return filemtime($a) - filemtime($b); } );
 
 	$blacklist = [];
 
 	if ( ! empty( $yara_scans ) ) {
-		foreach ( $yara_scans as $yara_scan ) {
+		$yara_scan = array_pop($yara_scans);
 			$lines = array_filter( explode( "\n", file_get_contents( $yara_scan ) ), 'yara_file' );
 			foreach ( $lines as $line ) {
 				$parts = explode( ' ', $line, 2 );
@@ -384,7 +387,6 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 					$blacklist[ $path ][ $parts[0] ] = true;
 				}
 			}
-		}
 	}
 
 	//var_dump($blacklist); die();

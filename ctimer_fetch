@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Fetch files specified by path from remote site
 #set -x
 

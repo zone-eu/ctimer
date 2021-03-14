@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Fetch ctimer json output over ssh, presuming list of site names in text file or as arguments
 # (and sites in .ssh/config - see https://github.com/zone-eu/zone-docs/blob/master/articles/eng/SSH-config-and-fs-from-zone-api.md)
 # Note: remote base directory is specific to zone.eu
@@ -17,12 +17,12 @@ function remote_ctimer() {
   echo "Doing ${host} ..."
 
   ssh "$host" "\
-	/usr/bin/mkdir -p ~/bin \
-	&& /usr/bin/wget -q https://raw.githubusercontent.com/zone-eu/ctimer/master/ctimer.php -O ~/bin/ctimer.php \
-	&& /usr/bin/chmod +x ~/bin/ctimer.php \
+	mkdir -p ~/bin \
+	&& wget -q https://raw.githubusercontent.com/zone-eu/ctimer/master/ctimer.php -O ~/bin/ctimer.php \
+	&& chmod +x ~/bin/ctimer.php \
 	&& builtin cd ~/domeenid/www.${host} \
 	&& /usr/bin/env php ~/bin/ctimer.php . ${host} echo ${cognizant} \
-	&& /usr/bin/rm -f ~/bin/ctimer.php \
+	&& rm -f ~/bin/ctimer.php \
 	" >"${host}_$(date +%Y-%m-%d_%H-%M)_ctimer.json"
 
 }

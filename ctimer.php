@@ -421,18 +421,17 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 			} else {
 				$file_class = 'path';
 				$all_clean  = false;
+
+				if ( ! empty( $blacklist ) && isset( $blacklist[ $file['name'] ] ) ) {
+					$some_bad         = true;
+					$file_class       = 'path text-danger';
+					$detections_names = array_keys( $blacklist[ $file['name'] ] );
+					$detections       = '<strong>ZARA:</strong> ' . implode( ', ', $detections_names );
+					$group_detections = array_merge( $group_detections, $detections_names );
+
+				}
+
 			}
-
-
-			if ( ! empty( $blacklist ) && isset( $blacklist[ $file['name'] ] ) ) {
-				$some_bad         = true;
-				$file_class       = 'path text-danger';
-				$detections_names = array_keys( $blacklist[ $file['name'] ] );
-				$detections       = '<strong>ZARA:</strong> ' . implode( ', ', $detections_names );
-				$group_detections = array_merge( $group_detections, $detections_names );
-
-			}
-
 
 			$file_date = date( "Y-m-d H:i:s", $file['ctime'] );
 			$fragment  .= $file_date . ' - <span class="' . $file_class . '">' . ltrim( $file['name'], './' ) . '</span> ' . $detections . PHP_EOL;

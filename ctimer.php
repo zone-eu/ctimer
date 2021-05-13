@@ -3,10 +3,12 @@
  * Group file change times by inode ctime
  *
  * @author  : Peeter Marvet (peeter@zone.ee)
- * Date: 06.01.2021
- * @version 1.6.2
+ * Date: 13.05.2021
+ * @version 1.6.3
  * @license https://www.gnu.org/licenses/gpl-3.0.html GPL
  *
+ * v.1.6.3
+ * - opening large groups that might have malicious files by default was not a good life choice
  * v.1.6.2
  * - for some reason all example.com_*.yara.log files were merged, now using only latest (by file mtime)
  * v.1.6.1
@@ -370,29 +372,32 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 	}
 
 	$yara_scans = glob( "{$host}_*.yara.log", GLOB_BRACE );
-	usort( $yara_scans, function( $a, $b ) { return filemtime($a) - filemtime($b); } );
+	usort( $yara_scans, function ( $a, $b ) {
+		return filemtime( $a ) - filemtime( $b );
+	} );
 
 	$blacklist = [];
 
 	if ( ! empty( $yara_scans ) ) {
-		$yara_scan = array_pop($yara_scans);
-			$lines = array_filter( explode( "\n", file_get_contents( $yara_scan ) ), 'yara_file' );
-			foreach ( $lines as $line ) {
-				$parts = explode( ' ', $line, 2 );
-				// giving /-terminated path to yara causes // in output
-				$path = str_replace( '//', '/', $parts[1] );
-				$path = str_replace( $base_path, '.', $path );
+		$yara_scan = array_pop( $yara_scans );
+		$lines     = array_filter( explode( "\n", file_get_contents( $yara_scan ) ), 'yara_file' );
+		foreach ( $lines as $line ) {
+			$parts = explode( ' ', $line, 2 );
+			// giving /-terminated path to yara causes // in output
+			$path = str_replace( '//', '/', $parts[1] );
+			$path = str_replace( $base_path, '.', $path );
 
-				if ( ! isset( $blacklist[ $path ][ $parts[0] ] ) ) {
-					$blacklist[ $path ][ $parts[0] ] = true;
-				}
+			if ( ! isset( $blacklist[ $path ][ $parts[0] ] ) ) {
+				$blacklist[ $path ][ $parts[0] ] = true;
 			}
+		}
 	}
 
 	//var_dump($blacklist); die();
 
-	$html     = "";
-	$panel_id = 0;
+	$html           = "";
+	$panel_id       = 0;
+	$all_detections = [];
 
 	foreach ( $file_ctimes_grouped as $time => $files ) {
 
@@ -400,10 +405,11 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 
 		$i = 0;
 
-		$fragment      = "";
-		$fragment_date = "";
-		$all_clean     = true;
-		$some_bad      = false;
+		$fragment         = "";
+		$fragment_date    = "";
+		$all_clean        = true; // all files in group have been whitelisted
+		$some_bad         = false; // some files in group have been detected
+		$group_detections = [];
 
 		foreach ( $files as $file ) {
 
@@ -419,9 +425,12 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 
 
 			if ( ! empty( $blacklist ) && isset( $blacklist[ $file['name'] ] ) ) {
-				$some_bad   = true;
-				$file_class = 'path text-danger';
-				$detections = '<strong>ZARA:</strong> ' . implode( ', ', array_keys( $blacklist[ $file['name'] ] ) );
+				$some_bad         = true;
+				$file_class       = 'path text-danger';
+				$detections_names = array_keys( $blacklist[ $file['name'] ] );
+				$detections       = '<strong>ZARA:</strong> ' . implode( ', ', $detections_names );
+				$group_detections = array_merge( $group_detections, $detections_names );
+
 			}
 
 
@@ -434,7 +443,7 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 			$i ++;
 		}
 
-		if ( ( $i >= 50 || $all_clean ) && ! $some_bad ) {
+		if ( ( $i >= 50 || $all_clean ) ) {
 			$collapse_class = "collapse";
 		} else {
 			$collapse_class = "collapse show";
@@ -445,6 +454,9 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 		$html .= "<div class=\"card-header\" role=\"tab\" id=\"heading_$panel_id\">";
 		// add data-parent="#accordion" to have other panels collapse when opening (presumably not desired here)
 		$html .= "<a class=\"text-dark\" role=\"button\" data-toggle=\"collapse\" href=\"#collapse_$panel_id\" aria-expanded=\"true\" aria-controls=\"collapse_$panel_id\">$fragment_date - <strong>$i files changed</strong></a>";
+		if ( count( $group_detections ) > 0 ) {
+			$html .= ' <strong>ZARA:</strong> ' . implode( ', ', array_unique( $detections_names ) );
+		}
 		$html .= "</div>";
 
 		$html .= "<div id=\"collapse_$panel_id\" class=\"panel-collapse $collapse_class\" role=\"tabpanel\" aria-labelledby=\"heading_$panel_id\">";
@@ -456,6 +468,7 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 		$html .= "</div>";
 
 		$panel_id ++;
+		$all_detections = array_merge( $all_detections, $group_detections );
 	}
 
 	if ( ! isset( $_GET['json'] ) ) {
@@ -478,6 +491,12 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 	if ( ! empty( $errors ) ) {
 		$optional .= '
                 <p class="alert alert-warning" role="alert"><strong>Inaccessible folders:</strong> ' . implode( ', ', $errors ) . '</p>
+            ';
+	}
+
+	if ( ! empty( $all_detections ) ) {
+		$optional .= '
+                <p class="alert alert-warning" role="alert"><strong>Matched ZARA rules:</strong> ' . implode( ', ', array_unique( $all_detections ) ) . '</p>
             ';
 	}
 

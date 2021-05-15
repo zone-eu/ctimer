@@ -3,10 +3,12 @@
  * Group file change times by inode ctime
  *
  * @author  : Peeter Marvet (peeter@zone.ee)
- * Date: 13.05.2021
- * @version 1.6.3
+ * Date: 15.05.2021
+ * @version 1.7.0
  * @license https://www.gnu.org/licenses/gpl-3.0.html GPL
  *
+ * v.1.7.0
+ * - download highlighted files if running live (e.g not displaying json). MAYhem workshop special edition :)
  * v.1.6.3
  * - opening large groups that might have malicious files by default was not a good life choice
  * v.1.6.2
@@ -114,6 +116,8 @@ $ignored_paths = array(
 
 $base_path = realpath( '.' );
 
+$allow_download = false;
+
 $errors = array();
 
 if ( php_sapi_name() === 'cli' ) {
@@ -162,18 +166,29 @@ if ( php_sapi_name() === 'cli' ) {
 	}
 
 	exit();
-}
+} else {
 
-if ( basename( $_SERVER["SCRIPT_FILENAME"], '.php' ) === 'ctimer' ) {
+	if ( filectime( __FILE__ ) < time() - 60 * 60 * 24 ) {
 
-	$new_name = 'ctimer_' . substr( md5( rand() ), 0, 8 ) . '.php';
+		unlink( __FILE__ );
 
-	rename( basename( __FILE__ ), $new_name );
+		header( "HTTP/1.0 404 Not Found" );
 
-	header( "HTTP/1.0 404 Not Found" );
-	echo "<pre>I should not be available on predictable address - so I renamed myself, new name is: <a href='$new_name'>$new_name</a>" . PHP_EOL . "It might be good idea to bookmark it for future use :-)</pre>";
-	die();
+		echo "<pre>I should not be forgotten on server - so I removed myself from the equation.</pre>";
+		die();
+	}
 
+	if ( basename( $_SERVER["SCRIPT_FILENAME"], '.php' ) === 'ctimer' ) {
+
+		$new_name = 'ctimer_' . substr( md5( rand() ), 0, 8 ) . '.php';
+
+		rename( basename( __FILE__ ), $new_name );
+
+		header( "HTTP/1.0 404 Not Found" );
+		echo "<pre>I should not be available on predictable address - so I renamed myself, new name is: <a href='$new_name'>$new_name</a>" . PHP_EOL . "It might be good idea to bookmark it for future use :-)</pre>";
+		die();
+
+	}
 }
 
 $local_jsons = get_stored_results();
@@ -181,6 +196,60 @@ $local_jsons = get_stored_results();
 if ( ! empty( $local_jsons ) && empty( $_GET['json'] ) && ! isset( $_GET['live'] ) ) {
 	$html = generate_filepicker_html( $local_jsons );
 } else {
+
+	if ( $allow_download === true && ! empty( $_POST["files"] ) ) {
+
+		$files = explode( "\n", $_POST["files"] );
+
+		ini_set( 'open_basedir', $base_path );
+
+		$zip      = new ZipArchive();
+		$zip_name = $_SERVER['SERVER_NAME'] . '_sample_' . date( 'Y-m-d_H-i' ) . '.zip';
+		$zip->open( $base_path . '/' . $zip_name, ZipArchive::CREATE );
+
+		$contents = array();
+
+		foreach ( $files as $file ) {
+
+			$file = trim( $file );
+
+			if ( ! empty( $file ) ) {
+
+				$file = realpath( $file );
+
+				$contents[] = $file;
+
+				if ( is_readable( $file ) && is_file( $file ) && basename( $file ) !== 'wp-config.php' ) {
+
+					$filename_parts = pathinfo( $file );
+					$uniqname       = $filename_parts['filename'] . '_' . substr( md5_file( $file ), 0, 8 );
+
+					if ( $filename_parts['basename'] === '.htaccess' ) {
+						$uniqname = $filename_parts['basename'] . $uniqname . '.txt'; // for easier opening / previewing
+					} else {
+						if ( ! empty( $filename_parts['extension'] ) ) {
+							$uniqname .= '.' . $filename_parts['extension'];
+						}
+					}
+
+					$zip->addFile( $file, $uniqname );
+				}
+			}
+		}
+
+		$zip->addFromString( '_meta/paths.txt', implode( "\n", $contents ) );
+
+		$zip->close();
+
+		header( 'Content-Type: application/zip' );
+		header( 'Content-disposition: attachment; filename=' . $zip_name );
+		header( 'Content-Length: ' . filesize( $base_path . '/' . $zip_name ) );
+		readfile( $base_path . '/' . $zip_name );
+
+		//unlink( $base_path . '/' . $zip_name );
+
+		die();
+	}
 
 	if ( ! isset( $_GET['json'] ) ) {
 
@@ -363,7 +432,7 @@ function yara_file( $line ) {
 
 function generate_ctimes_html( $file_ctimes_grouped ) {
 
-	global $ignored_extensions, $ignored_paths, $base_path, $host, $errors;
+	global $ignored_extensions, $ignored_paths, $base_path, $host, $errors, $allow_download;
 
 	if ( is_readable( 'whitelist.json' ) ) {
 		$whitelist = json_decode( file_get_contents( 'whitelist.json' ), true );
@@ -499,8 +568,17 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
             ';
 	}
 
+	if ( $allow_download ) {
+		$downloader = '<button class="btn btn-secondary files" type="submit">Download files!</button>';
+	} else {
+		$downloader = '<button class="btn btn-secondary list">Get the list!</button>';
+	}
+
+	$downloader = '<span class="download d-none">' . $downloader . '</span>';
+
 	$html = '
-				<h1 class="pt-3">What has changed? <span class="download d-none"><button class="btn btn-secondary">Get the list!</button></span></h1>
+                <form id="fetch" method="POST"><input type="hidden" id="files" name="files" value="">
+				<h1 class="pt-3">What has changed? ' . $downloader . '</h1>
 				<p>This script groups files by inode <code>ctime</code> - unlike <code>mtime</code> that
 					can be changed to whatever user pleases, this is set by kernel. Meaning we can trust it
 					(if we trust kernel, of course :-). Some paths may be excluded (cache?), please check the code.
@@ -511,7 +589,8 @@ function generate_ctimes_html( $file_ctimes_grouped ) {
 				<div id="accordion" role="tablist" aria-multiselectable="true">
 					' . $html . ' 
 				</div>
-				<p class="download d-none"><button class="btn btn-secondary">Get the list!</button></p>
+				<p>' . $downloader . '</p>
+                </form>
 				';
 
 	return $html;
@@ -653,15 +732,26 @@ class CtimerRecursiveFilterIterator extends RecursiveFilterIterator {
             $('.download').removeClass('d-none');
         });
 
-        $(".download button").on("click", function () {
+        $(".download button.list").on("click", function () {
 
-            var file = "";
+            var files = "";
 
             $('.ioc').each(function () {
-                file += base_path + $(this).text() + "\n";
+                files += base_path + $(this).text() + "\n";
             });
 
-            download(host, file);
+            download(host, files);
+        });
+
+        $(".download button.files").on("click", function () {
+
+            var files = "";
+
+            $('.ioc').each(function () {
+                files += base_path + $(this).text() + "\n";
+            });
+
+            $('#files').val(files);
         });
 
         function download(filename, text) {

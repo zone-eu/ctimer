@@ -83,6 +83,7 @@ $ignored_extensions = array(
 	'pdf',
 	'gz',
 	'jpeg',
+	'webp',
 	'mp3',
 	'mp4',
 	'doc',
